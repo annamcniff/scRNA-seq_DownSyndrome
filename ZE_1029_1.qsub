@@ -1,0 +1,31 @@
+#!/bin/bash -l 
+
+#$ -P zeldich 
+#$ -cwd
+#$ -N ZE_1029_1_q
+#$ -o ZE_1029_1_o
+#$ -e ZE_1029_1_e
+#$ -l h_rt=24:00:00
+#$ -l mem_total=16G
+#$ -pe mpi_16_tasks_per_node 16
+
+echo "Running job $JOB_ID"
+echo "Started: $(date +%F)"
+echo "Running in directory: $PWD"
+
+module load bcl2fastq/2.20
+module load cellranger/3.1.0 
+
+
+cellranger count --id=ZE_1029_1 \
+                   --fastqs=/projectnb/zeldich/organoid_project/outs/fastq_path/\
+                   --transcriptome=/projectnb/zeldich/organoid_project/GRCh38 \
+                   --sample=ZE_1029_1 \
+                   --expect-cells=2500 \
+                   --localcores=16 \
+                   --localmem=64
+                   
+                  
+
+
+echo "Completed: $(date +%F)" 
