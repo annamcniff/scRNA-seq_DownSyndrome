@@ -1,0 +1,887 @@
+---
+title: "GSEA_final"
+output: html_document
+date: "2023-08-28"
+---
+
+```{r}
+
+library(Seurat)
+library(dplyr)
+library(cowplot)
+library(RColorBrewer)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(SingleCellExperiment)
+library(scater)
+library(gridExtra)
+library(grid)
+```
+
+
+```{r}
+#import seurat object, normalized, scaled with PCA, umap, clustering etc included
+data<-readRDS("/projectnb/zeldich/organoid_project/seurat_analysis/data_object.rds")
+data <- data[!grepl("MALAT1", rownames(data)), ]
+
+# Filter Mitocondrial
+data <- data[!grepl("^MT-", rownames(data)), ]
+
+data.markers <- FindAllMarkers(data, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 5, order_by = avg_log2FC)
+```
+
+```{r}
+grouped<-data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 5, order_by = avg_log2FC)
+
+```
+
+```{r}
+#Rename Clusters
+new_idents<-c("ExN1","ExN2","ExN3","ExN4","ExN5","ExN6","Ast","bRGC","RGC","IPC","InN","ExN7","OPC")
+names(new_idents) <- levels(data)
+
+data <- RenameIdents(object = data, new_idents)
+DimPlot(data, label = TRUE)
+```
+
+```{r}
+#generate maturation vln plots
+calcium<-read.delim("/projectnb/zeldich/organoid_project/seurat_analysis/marker_csvs/calcium.csv") 
+head(calcium)
+calcium_list<-c("CACNG1")
+for (i in calcium){
+  calcium_list<-append(calcium_list, calcium$CACNG1)
+}
+setwd("/projectnb/zeldich/organoid_project/plots/pdfs/calcium_plots/")
+for (gene in calcium_list){
+  pdf(file=paste0(gene,".pdf"),
+  width=700, height=700)
+  print(VlnPlot(data,features=gene,split.by ="type" ))
+  dev.off()
+}
+
+```
+```{r}
+setwd("/projectnb/zeldich/organoid_project/seurat_analysis")
+potassium<-read.delim("/projectnb/zeldich/organoid_project/seurat_analysis/marker_csvs/potassium.csv") 
+head(potassium)
+potassium_list<-c("KCNMA1")
+for (i in potassium_list){
+  potassium_list<-append(potassium_list, potassium$KCNMA1)
+}
+setwd("/projectnb/zeldich/organoid_project/plots/pdfs/potassium_plots")
+for (gene in potassium_list){
+  pdf(file=paste0(gene,".pdf"),
+  width=700, height=700)
+  print(VlnPlot(data,features=gene,split.by ="type" ))
+  dev.off()
+}
+
+```
+
+```{r}
+ampa<-read.delim("/projectnb/zeldich/organoid_project/seurat_analysis/marker_csvs/ampa.csv") 
+head(ampa)
+ampa_list<-c("GRIA1")
+for (i in ampa_list){
+  ampa_list<-append(ampa_list, potassium$GRIA1)
+}
+setwd("/projectnb/zeldich/organoid_project/plots/pdfs/ampa_plots")
+for (gene in ampa_list){
+  pdf(file=paste0(gene,".pdf"),
+  width=700, height=700)
+  print(VlnPlot(data,features=gene,split.by ="type" ))
+  dev.off()
+}
+
+```
+```{r}
+sodium<-read.delim("/projectnb/zeldich/organoid_project/seurat_analysis/marker_csvs/sodium.csv") 
+head(sodium)
+sodium_list<-c("SCN1A")
+for (i in sodium_list){
+  sodium_list<-append(sodium_list, sodium$SCN1A)
+}
+setwd("/projectnb/zeldich/organoid_project/plots/pdfs/sodium_plots")
+for (gene in sodium_list){
+  pdf(file=paste0(gene,".pdf"),
+  width=700, height=700)
+  print(VlnPlot(data,features=gene,split.by ="type" ))
+  dev.off()
+}
+
+```
+
+```{r}
+nmda<-read.delim("/projectnb/zeldich/organoid_project/seurat_analysis/marker_csvs/nmda.csv") 
+head(nmda)
+nmda_list<-c("GRIN1")
+for (i in nmda_list){
+  nmda_list<-append(nmda_list, nmda$GRIN1)
+}
+setwd("/projectnb/zeldich/organoid_project/plots/pdfs/nmda_plots")
+for (gene in nmda_list){
+  pdf(file=paste0(gene,".pdf"),
+  width=700, height=700)
+  print(VlnPlot(data,features=gene,split.by ="type" ))
+  dev.off()
+}
+```
+
+##Additional Plots for Data Visulaization
+```{r}
+#Plotting Cluster Distribution across Samples
+pt <- table(Idents(data), data$orig.ident)
+pt <- as.data.frame(pt)
+pt$Var1 <- as.character(pt$Var1)
+
+ggplot(pt, aes(x = Var2, y = Freq, fill = Var1)) +
+  theme_bw(base_size = 15) +
+  geom_col(color="black",position = "fill", width = 0.5) + 
+  xlab("Sample") +
+  ylab("Proportion") +
+  theme(legend.title = element_blank())
+```
+
+```{r}
+#Plotting Sample Distribution across Clusters
+ggplot(pt, aes(x = Var1, y = Freq, fill = Var2)) +
+  theme_bw(base_size = 15) +
+  geom_col(color="black",position = "fill", width = 0.5) + 
+  xlab("Cluster") +
+  ylab("Proportion") +
+  theme(legend.title = element_blank())
+```
+
+```{r}
+#Find all markers differentially expressed between Triploid and Euploid
+compare.markers <- FindMarkers(data, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(compare.markers, n = 15)
+
+#make gene names a column instead of index
+compare.markers <- cbind(gene = rownames(compare.markers), compare.markers)
+rownames(compare.markers) <- 1:nrow(compare.markers)
+
+write.csv(compare.markers, "/projectnb/zeldich/organoid_project/result_csvs/all_de_genes.csv", row.names=FALSE)
+```
+
+```{r}
+library(fgsea)
+
+ranks <- compare.markers$avg_log2FC
+names(ranks) <- compare.markers$gene
+head(ranks)
+if ( any( duplicated(names(ranks)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks))]
+  }
+```
+
+```{r}
+barplot(sort(ranks, decreasing = T))
+```
+
+
+```{r}
+#Load in Hallmark Pathways
+pathways.hallmark <- gmtPathways("/projectnb/zeldich/organoid_project/seurat_analysis/h.all.v2023.1.Hs.symbols.gmt.txt")
+
+pathways.hallmark %>% 
+  head() %>% 
+  lapply(head)
+
+#gsea of Up and Down seperately 
+fgseaResUp <- fgsea(pathways=pathways.hallmark, stats=ranks,scoreType = "pos")
+fgseaResDown <- fgsea(pathways=pathways.hallmark, stats=ranks,scoreType = "neg")
+length(fgseaResUp)
+library(data.table)
+#data.table is necessary for fwrite function to export fgsea results 
+fwrite(fgseaResUp, file="fgseaup.tsv", sep="\t", sep2=c("", " ", ""))
+fwrite(fgseaResDown, file="fgseadown.tsv", sep="\t", sep2=c("", " ", ""))
+```
+
+```{r}
+fgseaResUpTidy <- fgseaResUp %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+ggplot(fgseaResUpTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Upregulated Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+
+```
+
+```{r}
+fgseaResDownTidy <- fgseaResDown %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+ggplot(fgseaResDownTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.01)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Downregulated Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+```{r}
+fgseaResall <- fgsea(pathways=pathways.hallmark, stats=ranks)
+fgseaResallTidy <- fgseaResall %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+ggplot(fgseaResallTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+```{r}
+pathways.c2 <- gmtPathways("/projectnb/zeldich/organoid_project/seurat_analysis/c2.all.v2023.1.Hs.symbols.gmt.txt")
+
+pathways.c2 %>% 
+  head() %>% 
+  lapply(head)
+
+fgseaRes2 <- fgsea(pathways=pathways.c2, stats=ranks)
+length(fgseaRes2)
+fgseaResTidy2 <- fgseaRes2 %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+ggplot(fgseaResTidy2, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="C2 pathways NES from GSEA") + 
+  theme_minimal()
+```
+```{r}
+all_exn<-subset(x = data, idents = c("ExN1","ExN2","ExN3","ExN4","ExN5","ExN6","ExN7"))
+
+allexn.markers <- FindMarkers(all_exn, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+#head(allexn.markers, n = 15)
+
+#make gene names a column instead of index
+allexn.markers <- cbind(gene = rownames(allexn.markers), allexn.markers)
+rownames(allexn.markers) <- 1:nrow(allexn.markers)
+
+ranks_exn <- allexn.markers$avg_log2FC
+names(ranks_exn) <- allexn.markers$gene
+head(ranks_exn)
+if ( any( duplicated(names(ranks_exn)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_exn))]
+  }
+```
+```{r}
+
+fgseaResExN <- fgsea(pathways=pathways.hallmark, stats=ranks_exn)
+fgseaResExNTidy <- fgseaResExN %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+ggplot(fgseaResExNTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+fwrite(fgseaResExN, file="fgsea_allexn.tsv", sep="\t", sep2=c("", " ", ""))
+```
+
+```{r}
+opc<-subset(x = data, idents = c("OPC"))
+
+opc.markers <- FindMarkers(opc, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+
+
+#make gene names a column instead of index
+opc.markers <- cbind(gene = rownames(opc.markers), opc.markers)
+rownames(opc.markers) <- 1:nrow(opc.markers)
+
+ranks_opc <- opc.markers$avg_log2FC
+names(ranks_opc) <- opc.markers$gene
+head(ranks_opc)
+if ( any( duplicated(names(ranks_opc)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_opc))]
+}
+fgseaResOpc <- fgsea(pathways=pathways.hallmark, stats=ranks_opc)
+fgseaResOpcTidy <- fgseaResOpc %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+png(file="opc_nes.png",
+  width=700, height=700)
+ggplot(fgseaResOpcTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="OPC Cluster Hallmark pathways NES") + 
+  theme_minimal()
+dev.off()
+fwrite(fgseaResOpc, file="fgsea_opc.tsv", sep="\t", sep2=c("", " ", ""))
+
+```
+```{r}
+InN<-subset(x = data, idents = c("InN"))
+
+InN.markers <- FindMarkers(InN, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+
+
+#make gene names a column instead of index
+InN.markers <- cbind(gene = rownames(InN.markers), InN.markers)
+rownames(InN.markers) <- 1:nrow(InN.markers)
+
+ranks_inn <- InN.markers$avg_log2FC
+names(ranks_inn) <- InN.markers$gene
+head(ranks_inn)
+if ( any( duplicated(names(ranks_inn)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_inn))]
+}
+fgseaResInN <- fgsea(pathways=pathways.hallmark, stats=ranks_inn)
+fgseaResInNTidy <- fgseaResInN %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+png(file="opc_nes.png",
+  width=700, height=700)
+ggplot(fgseaResInNTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="InN Cluster Hallmark pathways NES") + 
+  theme_minimal()
+dev.off()
+fwrite(fgseaResInN, file="fgsea_inn.tsv", sep="\t", sep2=c("", " ", ""))
+```
+
+```{r}
+RG<-subset(x = data, idents = c("RGC"))
+
+RG.markers <- FindMarkers(RG, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+
+#make gene names a column instead of index
+RG.markers <- cbind(gene = rownames(RG.markers), RG.markers)
+rownames(RG.markers) <- 1:nrow(RG.markers)
+
+ranks_rg <- RG.markers$avg_log2FC
+names(ranks_rg) <- RG.markers$gene
+head(ranks_rg)
+if ( any( duplicated(names(ranks_rg)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_rg))]
+}
+fgseaResRG <- fgsea(pathways=pathways.hallmark, stats=ranks_rg)
+fgseaResRGTidy <- fgseaResRG %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+png(file="rg_nes.png",
+  width=700, height=700)
+ggplot(fgseaResRGTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="RG Cluster Hallmark pathways NES") + 
+  theme_minimal()
+dev.off()
+fwrite(fgseaResRG, file="fgsea_rg.tsv", sep="\t", sep2=c("", " ", ""))
+
+```
+
+```{r}
+bRGC<-subset(x = data, idents = c("bRGC"))
+
+bRGC.markers <- FindMarkers(bRGC, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+
+#make gene names a column instead of index
+bRGC.markers <- cbind(gene = rownames(bRGC.markers), bRGC.markers)
+rownames(bRGC.markers) <- 1:nrow(bRGC.markers)
+
+ranks_brg <- bRGC.markers$avg_log2FC
+names(ranks_brg) <- bRGC.markers$gene
+head(ranks_brg)
+if ( any( duplicated(names(ranks_brg)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_brg))]
+}
+fgseaResBRG <- fgsea(pathways=pathways.hallmark, stats=ranks_brg)
+fgseaResBRGTidy <- fgseaResBRG %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+png(file="brg_nes.png",
+  width=700, height=700)
+ggplot(fgseaResBRGTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="bRGC Cluster Hallmark pathways NES") + 
+  theme_minimal()
+dev.off()
+fwrite(fgseaResBRG, file="fgsea_brgc.tsv", sep="\t", sep2=c("", " ", ""))
+
+```
+```{r}
+ast<-subset(x = data, idents = c("Ast"))
+
+ast.markers <- FindMarkers(ast, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+
+#make gene names a column instead of index
+ast.markers <- cbind(gene = rownames(ast.markers), ast.markers)
+rownames(ast.markers) <- 1:nrow(ast.markers)
+
+ranks_ast <- ast.markers$avg_log2FC
+names(ranks_ast) <- ast.markers$gene
+head(ranks_ast)
+if ( any( duplicated(names(ranks_ast)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_ast))]
+}
+fgseaResAst <- fgsea(pathways=pathways.hallmark, stats=ranks_ast)
+fgseaResAstTidy <- fgseaResAst %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+png(file="ast_nes.png",
+  width=700, height=700)
+ggplot(fgseaResAstTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Ast Cluster Hallmark pathways NES") + 
+  theme_minimal()
+dev.off()
+fwrite(fgseaResAst, file="fgsea_ast.tsv", sep="\t", sep2=c("", " ", ""))
+
+```
+```{r}
+ipc<-subset(x = data, idents = c("IPC"))
+
+ipc.markers <- FindMarkers(ipc, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+
+#make gene names a column instead of index
+ipc.markers <- cbind(gene = rownames(ipc.markers), ipc.markers)
+rownames(ipc.markers) <- 1:nrow(ipc.markers)
+
+ranks_ipc <- ipc.markers$avg_log2FC
+names(ranks_ipc) <- ipc.markers$gene
+head(ranks_ipc)
+if ( any( duplicated(names(ranks_ipc)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_ipc))]
+}
+fgseaResIpc <- fgsea(pathways=pathways.hallmark, stats=ranks_ipc)
+fgseaResIpcTidy <- fgseaResIpc %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+png(file="ipc_nes.png",
+  width=700, height=700)
+ggplot(fgseaResIpcTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="IPC Cluster Hallmark pathways NES") + 
+  theme_minimal()
+dev.off()
+fwrite(fgseaResIpc, file="fgsea_ipc.tsv", sep="\t", sep2=c("", " ", ""))
+
+```
+
+```{r}
+
+Sengmt<- gmtPathways("/projectnb/zeldich/organoid_project/seurat_analysis/marker_csvs/sen_gmt.tsv") 
+Sengmt %>% 
+  head() %>% 
+  lapply(head)
+```
+
+```{r}
+fgseaResSenUP <- fgsea(pathways=Sengmt, stats=ranks,scoreType = "pos")
+fgseaRes_SenTidyUP <- fgseaResSenUP %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+fwrite(fgseaResSenUP, file="fgsea_sen_up.tsv", sep="\t", sep2=c("", " ", ""))
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_SenTidyUP, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES") + 
+  theme_minimal()
+
+dev.off()
+```
+
+```{r}
+fgseaRes_Sen <- fgsea(pathways=Sengmt, stats=ranks,scoreType = "pos")
+fgseaRes_SenTidy <- fgseaRes_Sen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+ggplot(fgseaRes_SenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES") + 
+  theme_minimal()
+head(fgseaRes_Sen)
+```
+```{r}
+fgseaRes_OPCSen <- fgsea(pathways=Sengmt, stats=ranks_opc,scoreType = "pos")
+fgseaRes_OPCSenTidy <- fgseaRes_OPCSen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+fwrite(fgseaRes_OPCSen, file="fgsea_sen_opc.tsv", sep="\t", sep2=c("", " ", ""))
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_opc_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_OPCSenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES OPC") + 
+  theme_minimal()
+
+dev.off()
+```
+```{r}
+fgseaRes_InNSen <- fgsea(pathways=Sengmt, stats=ranks_inn,scoreType = "pos")
+fgseaRes_InNSenTidy <- fgseaRes_InNSen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+fwrite(fgseaRes_InNSen, file="fgsea_sen_inn.tsv", sep="\t", sep2=c("", " ", ""))
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_inn_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_InNSenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES InN") + 
+  theme_minimal()
+
+dev.off()
+```
+
+```{r}
+fgseaRes_IpcSen <- fgsea(pathways=Sengmt, stats=ranks_ipc,scoreType = "pos")
+fgseaRes_IpcSenTidy <- fgseaRes_IpcSen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+fwrite(fgseaRes_IpcSen, file="fgsea_sen_ipc.tsv", sep="\t", sep2=c("", " ", ""))
+
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_ipc_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_IpcSenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES IPC") + 
+  theme_minimal()
+
+dev.off()
+```
+```{r}
+fgseaRes_AstSen <- fgsea(pathways=Sengmt, stats=ranks_ast,scoreType = "pos")
+fgseaRes_AstSenTidy <- fgseaRes_AstSen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+fwrite(fgseaRes_AstSen, file="fgsea_sen_ast.tsv", sep="\t", sep2=c("", " ", ""))
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_ast_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_AstSenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES Ast") + 
+  theme_minimal()
+
+dev.off()
+```
+
+```{r}
+exn1<-subset(x = data, idents = c("ExN1"))
+
+exn1.markers <- FindMarkers(exn1, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+#head(allexn.markers, n = 15)
+
+#make gene names a column instead of index
+exn1.markers <- cbind(gene = rownames(exn1.markers), exn1.markers)
+rownames(exn1.markers) <- 1:nrow(exn1.markers)
+
+ranks_exn1 <- exn1.markers$avg_log2FC
+names(ranks_exn1) <- exn1.markers$gene
+head(ranks_exn1)
+if ( any( duplicated(names(ranks_exn1)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_exn1))]
+  }
+```
+
+
+```{r}
+
+fgseaRes_Exn1Sen <- fgsea(pathways=Sengmt, stats=ranks_exn1,scoreType = "pos")
+fgseaRes_Exn1SenTidy <- fgseaRes_Exn1Sen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+fwrite(fgseaRes_Exn1Sen, file="fgsea_sen_exn1.tsv", sep="\t", sep2=c("", " ", ""))
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_exn1_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_Exn1SenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES Exn1") + 
+  theme_minimal()
+dev.off()
+
+
+```
+```{r}
+exn2<-subset(x = data, idents = c("ExN2"))
+
+exn2.markers <- FindMarkers(exn2, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+#head(allexn.markers, n = 15)
+
+#make gene names a column instead of index
+exn2.markers <- cbind(gene = rownames(exn2.markers), exn2.markers)
+rownames(exn2.markers) <- 1:nrow(exn2.markers)
+
+ranks_exn2 <- exn2.markers$avg_log2FC
+names(ranks_exn2) <- exn2.markers$gene
+head(ranks_exn2)
+if ( any( duplicated(names(ranks_exn2)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_exn2))]
+}
+fgseaRes_Exn2Sen <- fgsea(pathways=Sengmt, stats=ranks_exn2,scoreType = "pos")
+fgseaRes_Exn2SenTidy <- fgseaRes_Exn2Sen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+fwrite(fgseaRes_Exn2Sen, file="fgsea_sen_exn2.tsv", sep="\t", sep2=c("", " ", ""))
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_exn2_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_Exn2SenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES Exn2") + 
+  theme_minimal()
+dev.off()
+head(fgseaRes_Exn2SenTidy)
+```
+```{r}
+exn3<-subset(x = data, idents = c("ExN3"))
+
+exn3.markers <- FindMarkers(exn3, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+#head(allexn.markers, n = 15)
+
+#make gene names a column instead of index
+exn3.markers <- cbind(gene = rownames(exn3.markers), exn3.markers)
+rownames(exn3.markers) <- 1:nrow(exn3.markers)
+
+ranks_exn3 <- exn3.markers$avg_log2FC
+names(ranks_exn3) <- exn3.markers$gene
+head(ranks_exn3)
+if ( any( duplicated(names(ranks_exn3)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_exn3))]
+}
+fgseaRes_Exn3Sen <- fgsea(pathways=Sengmt, stats=ranks_exn3,scoreType = "pos")
+fgseaRes_Exn3SenTidy <- fgseaRes_Exn3Sen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+fwrite(fgseaRes_Exn3Sen, file="fgsea_sen_exn3.tsv", sep="\t", sep2=c("", " ", ""))
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_exn3_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_Exn3SenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES Exn3") + 
+  theme_minimal()
+dev.off()
+```
+
+```{r}
+exn4<-subset(x = data, idents = c("ExN4"))
+
+exn4.markers <- FindMarkers(exn4, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+#head(allexn.markers, n = 15)
+
+#make gene names a column instead of index
+exn4.markers <- cbind(gene = rownames(exn4.markers), exn4.markers)
+rownames(exn4.markers) <- 1:nrow(exn4.markers)
+
+ranks_exn4 <- exn4.markers$avg_log2FC
+names(ranks_exn4) <- exn4.markers$gene
+head(ranks_exn4)
+if ( any( duplicated(names(ranks_exn4)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_exn4))]
+}
+fgseaRes_Exn4Sen <- fgsea(pathways=Sengmt, stats=ranks_exn4,scoreType = "pos")
+fgseaRes_Exn4SenTidy <- fgseaRes_Exn4Sen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+fwrite(fgseaRes_Exn4Sen, file="fgsea_sen_exn4.tsv", sep="\t", sep2=c("", " ", ""))
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_exn4_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_Exn4SenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES Exn4") + 
+  theme_minimal()
+dev.off()
+head(fgseaRes_Exn4SenTidy)
+```
+```{r}
+exn5<-subset(x = data, idents = c("ExN5"))
+
+exn5.markers <- FindMarkers(exn5, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+#head(allexn.markers, n = 15)
+
+#make gene names a column instead of index
+exn5.markers <- cbind(gene = rownames(exn5.markers), exn5.markers)
+rownames(exn5.markers) <- 1:nrow(exn5.markers)
+
+ranks_exn5 <- exn5.markers$avg_log2FC
+names(ranks_exn5) <- exn5.markers$gene
+head(ranks_exn5)
+if ( any( duplicated(names(ranks_exn5)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_exn5))]
+}
+fgseaRes_Exn5Sen <- fgsea(pathways=Sengmt, stats=ranks_exn5,scoreType = "pos")
+fgseaRes_Exn5SenTidy <- fgseaRes_Exn5Sen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+fwrite(fgseaRes_Exn5Sen, file="fgsea_sen_exn5.tsv", sep="\t", sep2=c("", " ", ""))
+
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_exn5_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_Exn5SenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES Exn5") + 
+  theme_minimal()
+dev.off()
+head(fgseaRes_Exn5SenTidy)
+```
+```{r}
+exn6<-subset(x = data, idents = c("ExN6"))
+
+exn6.markers <- FindMarkers(exn6, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+#head(allexn.markers, n = 15)
+
+#make gene names a column instead of index
+exn6.markers <- cbind(gene = rownames(exn6.markers), exn6.markers)
+rownames(exn6.markers) <- 1:nrow(exn6.markers)
+
+ranks_exn6 <- exn6.markers$avg_log2FC
+names(ranks_exn6) <- exn6.markers$gene
+head(ranks_exn6)
+if ( any( duplicated(names(ranks_exn6)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_exn6))]
+}
+fgseaRes_Exn6Sen <- fgsea(pathways=Sengmt, stats=ranks_exn6,scoreType = "pos")
+fgseaRes_Exn6SenTidy <- fgseaRes_Exn6Sen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fwrite(fgseaRes_Exn6Sen, file="fgsea_sen_exn6.tsv", sep="\t", sep2=c("", " ", ""))
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_exn6_nes.png",
+  width=700, height=700)
+
+ggplot(fgseaRes_Exn6SenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES Exn6") + 
+  theme_minimal()
+head(fgseaRes_Exn6SenTidy)
+dev.off()
+```
+```{r}
+exn7<-subset(x = data, idents = c("ExN7"))
+
+exn7.markers <- FindMarkers(exn7, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+#head(allexn.markers, n = 15)
+
+#make gene names a column instead of index
+exn7.markers <- cbind(gene = rownames(exn7.markers), exn7.markers)
+rownames(exn7.markers) <- 1:nrow(exn7.markers)
+
+ranks_exn7 <- exn7.markers$avg_log2FC
+names(ranks_exn7) <- exn7.markers$gene
+head(ranks_exn7)
+if ( any( duplicated(names(ranks_exn7)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks_exn7))]
+}
+fgseaRes_Exn7Sen <- fgsea(pathways=Sengmt, stats=ranks_exn7,scoreType = "pos")
+fgseaRes_Exn7SenTidy <- fgseaRes_Exn7Sen %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+fwrite(fgseaRes_Exn7Sen, file="fgsea_sen_exn7.tsv", sep="\t", sep2=c("", " ", ""))
+
+
+setwd("/projectnb/zeldich/organoid_project/plots/sen_nes_plots")
+png(file="sen_exn7_nes.png",
+  width=700, height=700)
+ggplot(fgseaRes_Exn7SenTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.1)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence Gene Sets NES Exn7") + 
+  theme_minimal()
+dev.off()
+head(fgseaRes_Exn7SenTidy)
+```
+
+
+```{r}
+calcium_stats<-subset(compare.markers,gene%in%calcium_list)
+calcium_stats
+```
+```{r}
+sodium_stats<-subset(compare.markers,gene%in%sodium_list)
+sodium_stats
+```
+
+

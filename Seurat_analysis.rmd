@@ -1,0 +1,787 @@
+---
+title: "sv3"
+output: html_document
+date: "2023-07-24"
+---
+
+```{r Seurat setup, include=FALSE}
+suffix <- "Seurat"
+cachePath <- paste0("./cache/", suffix, "/")
+plotsPath <- paste0("./plots/", suffix, "/")
+SCEPath <- paste0("./cache/SCE_object/")
+dir.create(file.path(cachePath), showWarnings = FALSE)
+dir.create(file.path(plotsPath), showWarnings = FALSE)
+
+currentDir <- dirname(getwd())
+investigator <- basename(dirname(currentDir))
+projectDate <- basename(currentDir)
+projectID <- projectName <- paste(projectDate, investigator, sep = "_")
+
+# Knitr Global Options
+knitr::opts_chunk$set(
+    cache=FALSE,
+    cache.lazy=FALSE,        # don't do lazy-loading for big objects
+    cache.comments=FALSE,
+    cache.path = cachePath,
+    fig.path = plotsPath,
+    fig.align = "center",
+    fig.keep = "all",
+    dev = c("png", "pdf")
+)
+
+library(Seurat)
+library(dplyr)
+library(cowplot)
+library(RColorBrewer)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(SingleCellExperiment)
+library(scater)
+library(gridExtra)
+library(grid)
+library(ggplot2)
+
+
+
+```
+
+```{r}
+# Load the ZE1 dataset
+ze1.data <- Read10X(data.dir="/projectnb/zeldich/organoid_project/cellranger_testing/ZE_1029_1/outs/filtered_feature_bc_matrix/")
+ze2.data <- Read10X(data.dir="/projectnb/zeldich/organoid_project/cellranger_testing/ZE_1029_2/outs/filtered_feature_bc_matrix/")
+ze4.data <- Read10X(data.dir="/projectnb/zeldich/organoid_project/cellranger_testing/ZE_1029_4/outs/filtered_feature_bc_matrix/")
+ze5.data <- Read10X(data.dir="/projectnb/zeldich/organoid_project/cellranger_testing/ZE_1029_5/outs/filtered_feature_bc_matrix/")
+
+ze1r.data <- Read10X(data.dir="/projectnb/zeldich/organoid_project/cellranger_testing/ZE_1029_1/outs/raw_feature_bc_matrix/")
+ze2r.data <- Read10X(data.dir="/projectnb/zeldich/organoid_project/cellranger_testing/ZE_1029_2/outs/raw_feature_bc_matrix/")
+ze4r.data <- Read10X(data.dir="/projectnb/zeldich/organoid_project/cellranger_testing/ZE_1029_4/outs/raw_feature_bc_matrix/")
+ze5r.data <- Read10X(data.dir="/projectnb/zeldich/organoid_project/cellranger_testing/ZE_1029_5/outs/raw_feature_bc_matrix/")
+
+# Initialize the Seurat object with the raw (non-normalized data).
+ze1 <- CreateSeuratObject(counts = ze1.data, project = "Zeldich1")
+ze1$type = "Euploid"
+#adding metadata for easier plotting later on 
+ze2 <- CreateSeuratObject(counts = ze2.data, project = "Zeldich2")
+ze2$type = "Euploid"
+ze4 <- CreateSeuratObject(counts = ze4.data, project = "Zeldich3")
+ze4$type = "Triploid"
+ze5 <- CreateSeuratObject(counts = ze5.data, project = "Zeldich4")
+ze5$type = "Triploid"
+ze1r <- CreateSeuratObject(counts = ze1r.data, project = "Zeldich1r")
+ze2r <- CreateSeuratObject(counts = ze2r.data, project = "Zeldich2r")
+ze4r <- CreateSeuratObject(counts = ze4r.data, project = "Zeldich3r")
+ze5r <- CreateSeuratObject(counts = ze5r.data, project = "Zeldich4r")
+
+sce.filter <- merge(ze1, y = c(ze2, ze4, ze5), add.cell.ids = c("ZE1", "ZE2", "ZE4", "ZE5"), project = "Zeldich")
+
+saveRDS(sce.filter,file = "sce.filter.rds", ascii = FALSE, version = NULL,
+        compress = TRUE, refhook = NULL)
+
+sce.full <- merge(ze1r, y = c(ze2r, ze4r, ze5r), add.cell.ids = c("ZE1r", "ZE2r", "ZE4r", "ZE5r"), project = "Zeldich")
+saveRDS(sce.full,file = "sce.full.rds", ascii = FALSE, version = NULL,
+        compress = TRUE, refhook = NULL)
+
+```
+
+
+
+
+```{r}
+#sce.filter.rds <- paste0(projectID, "_SingleCellExperiment_Filtered.rds")
+#sce.full.rds <- paste0(projectID, "_SingleCellExperiment_Full.rds")
+
+
+sce.filter.file = readRDS("/projectnb/zeldich/organoid_project/seurat_analysis/sce.filter.rds")
+sce.full.file = readRDS("/projectnb/zeldich/organoid_project/seurat_analysis/sce.full.rds")
+
+sce.filter.file
+```
+
+
+```{r}
+
+
+# Refined Clustering Granularity
+if (!exists("seurat.selected.resolution")){
+  seurat.selected.resolution <- 0.6
+}
+if (!exists("seurat.selected.features.numbers")){
+  seurat.selected.features.numbers <- 2000
+}
+if(!exists("Custom_Markers")){
+  Custom_Markers <- c("Cd8a", "Cd4", "Cd3d", "Cd14", "Cd19", "Cd79a", "Il7r", "Lyz", "Ms4a1", "Fcgr3a", "Ms4a7", "Gnly", "Nkg7", "Fcer1a", "Cst3", "Ppbp", "S100a8")
+}
+if (!exists("initial.PC.numbers")){
+  initial.PC.numbers <- 50
+}
+if (!exists("forced.PC.numbers")){
+  forced.PC.numbers <- NA
+}
+if (!exists("perform_abundance")){
+  perform_abundance <- TRUE
+}
+if (!exists("sampleNames")){
+  sampleNames <- read.csv( file.path("../outs/input_samplesheet.csv"), header=T)$Sample
+}
+#Mycolor <- colorRampPalette(brewer.pal(12, "Set3"))(length(sampleNames))
+
+
+# switch between file and seurat object depending on whether you ran from beginning 
+# possible to omitt previous part once rds files have been generated 
+#sce <- sce.filter
+#sce.full <- sce.full
+sce <- sce.filter.file
+sce.full <- sce.full.file
+sce_count_matrix <- counts(as.SingleCellExperiment(sce))
+for (i in 1:length(sampleNames)){
+  colnames(sce_count_matrix) <- gsub(sampleNames[i], sampleNames_substitute[i], colnames(sce_count_matrix))
+}
+data <- CreateSeuratObject(counts = sce_count_matrix, project = projectName)
+```
+
+
+```{r}
+Numofbarcodes <- ncol(sce.full)
+Numofbarcodes_filtered <- ncol(sce)
+Numofmarkers <- nrow(sce.full)
+Numofmarkers_filtered <- nrow(sce)
+
+Numofsamples <- length(sampleNames)
+h.w.mtx = matrix(c(1,1,1,1,2,2,3,1,3,3, 1,2,3,4,3,3,3,8,3,4), nrow =2, byrow = T)
+dimnames(h.w.mtx) = list(c("s.s.height.index", "s.s.width.index"))
+sample.separated.height = 6 * h.w.mtx[,Numofsamples][1]
+sample.separated.width = 6 * h.w.mtx[,Numofsamples][2]
+sample.separated.ncols = h.w.mtx[,Numofsamples][2]
+sample_coord_ratio = h.w.mtx[,Numofsamples][1]/h.w.mtx[,Numofsamples][2]
+sce$group <- sce@meta.data$orig.ident
+```
+
+
+```{r Seurat QC, eval = FALSE, echo = FALSE, fig.height = 5, fig.width = 12}
+
+sce[["percent_mito"]] <- PercentageFeatureSet(object = sce, pattern = "^mt-")
+
+
+# Added
+# Feature plots of nCount versus nFeature
+FeaturePlot1 <- FeatureScatter(object = sce, feature1 = "nCount_RNA", feature2 = "percent_mito") 
+FeaturePlot2 <- FeatureScatter(object = sce, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") 
+# Combined visualization of mitochondrial genes percentage and number of genes for each cell identified for each sample
+#Combined_FeaturePlot <- CombinePlots(plots = list(FeaturePlot1, FeaturePlot2))
+#Combined_FeaturePlot
+
+FeaturePlot1
+FeaturePlot2
+# Filter out cells that have unique gene counts over seuratQCMaxUniqGenes or less than seuratQCMinUniqGenes
+#seuratQCMinUniqGenes 
+#seuratQCMaxUniqGenes 
+
+#subset based off of QC metrics - if not loading re-run QC .rmd or manually input metrics
+#sce <- subset(sce, subset = nFeature_RNA > seuratQCMinUniqGenes & nFeature_RNA < seuratQCMaxUniqGenes & percent.mt > -Inf & percent.mt < 20)
+```
+
+```{r Seurat Normalization}
+# Normalize data
+all.genes <- rownames(sce)
+data <- NormalizeData(sce, verbose = FALSE)
+```
+
+```{r Seurat Variable Genes, echo=FALSE, results='asis', warning = FALSE}
+
+data <- FindVariableFeatures(data, selection.method = "vst", nfeatures = seurat.selected.features.numbers)
+num.variable.genes <- length(VariableFeatures(object = data))
+top10_data <- head(x = VariableFeatures(object = data), 10)
+VariableFeaturePlot_data <- VariableFeaturePlot(object = data)
+Labeled_Variable_data <- LabelPoints(plot = VariableFeaturePlot_data, points = top10_data, repel = TRUE, xnudge = 0, ynudge = 0)
+Labeled_Variable_data
+
+```
+
+```{r Seurat Scaling Data, echo = TRUE}
+data <- ScaleData(object = data, verbose = FALSE)
+```
+
+```{r Seurat PCAs, JackStraw and Elbow plot, echo=TRUE, fig.height = 5, fig.width = 12,  warning = FALSE}
+data <- RunPCA(object = data, verbose = FALSE, npcs = initial.PC.numbers)
+data <- JackStraw(object = data, num.replicate = 100, prop.freq=0.025, dims = initial.PC.numbers)
+data <- ScoreJackStraw(data, dims = 1:initial.PC.numbers)
+JackStrawPlot <- JackStrawPlot(object = data, dims = 1:initial.PC.numbers, xmax = 0.05) + guides(col = guide_legend(ncol = 1)) + theme(legend.text = element_text(size = 6), legend.key.size = unit(0.02, "cm"))
+ElbowPlot <- ElbowPlot(object = data, ndims = initial.PC.numbers)
+Combined_PCAPlot <- CombinePlots(plots = list(JackStrawPlot, ElbowPlot))
+Combined_PCAPlot
+```
+
+
+```{r Seurat Post PCA calculation, include = FALSE}
+PC_Matrix <- data@reductions$pca@jackstraw@overall.p.values
+
+significant_PC <- which.min(PC_Matrix[,2] < 0.01) - 1
+if (!exists("significant_PC") || significant_PC == 0){
+  significant_PC <- initial.PC.numbers
+}
+if (!is.na(forced.PC.numbers)){
+  significant_PC <- forced.PC.numbers
+}
+
+PC.separated.height <- 3.5 * ceiling(initial.PC.numbers/3)
+
+```
+
+```{r}
+datamt <- PercentageFeatureSet(data, "^MT-", col.name = "percent_mito")
+selected_mito <- WhichCells(datamt, expression = percent_mito < 0.1)
+datamt <- subset(datamt, cells = selected_mito)
+```
+
+
+```{r Seurat PC Heatmap, echo=TRUE, fig.height = PC.separated.height, fig.width = 15}
+DimHeatmap(object = data, dims = 1:15, cells = 500, balanced = TRUE, ncol = 3)
+```
+
+
+```{r Seurat Default FindNeighbors, echo = TRUE}
+data <- FindNeighbors(object = data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+```
+
+
+### Different resolutions {.tabset .tabset-fade}
+A resolution parameter is available in FindClusters function. This resolution sets the granularity of the clustering, with increased values leading to a greater number of clusters. The choice of resolution is slightly subjective and varies on the size of the dataset. Typically for larger datasets the optimal resolution often increases. Here different clustering results are provided using a set of different resolutions.
+
+
+#### RES = 0.3
+UMAP/tSNE plots using 0.3 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 0.3, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 0.3, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+```
+
+
+
+
+
+```{r Seurat resolution as 0.3, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+#colData(sce)$Seurat_res_0.3 <- data@active.ident@.Data
+```
+
+#### RES = 0.4
+UMAP/tSNE plots using 0.4 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 0.4, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 0.4, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+#colData(sce)$Seurat_res_0.4 <- data@active.ident@.Data
+```
+
+#### RES = 0.5
+UMAP/tSNE plots using 0.5 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 0.5, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 0.5, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+colData(sce)$Seurat_res_0.5 <- data@active.ident@.Data
+```
+
+#### RES = 0.6
+UMAP/tSNE plots using 0.6 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 0.6, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 0.6, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+colData(sce)$Seurat_res_0.6 <- data@active.ident@.Data
+```
+
+#### RES = 0.7
+UMAP/tSNE plots using 0.7 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 0.7, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 0.7, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+Combined_PCAPlot <- CombinePlots(plots = list(DimPlot(data, reduction = "umap", label = TRUE), DimPlot(data, reduction = "tsne", label = TRUE)))
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+colData(sce)$Seurat_res_0.7 <- data@active.ident@.Data
+```
+
+#### RES = 0.8
+UMAP/tSNE plots using 0.8 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 0.8, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 0.8, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+colData(sce)$Seurat_res_0.8 <- data@active.ident
+```
+
+#### RES = 0.9
+UMAP/tSNE plots using 0.9 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 0.9, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 0.9, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+#colData(sce)$Seurat_res_0.9 <- data@active.ident@.Data
+```
+
+#### RES = 1.0
+UMAP/tSNE plots using 1.0 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 1.0, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 1.0, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+colData(sce)$Seurat_res_1.0 <- data@active.ident@.Data
+```
+
+#### RES = 1.1
+UMAP/tSNE plots using 1.1 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 1.1, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 1.1, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+colData(sce)$Seurat_res_1.1 <- data@active.ident@.Data
+```
+
+#### RES = 1.2
+UMAP/tSNE plots using 1.2 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 1.2, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 1.2, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+colData(sce)$Seurat_res_1.2 <- data@active.ident@.Data
+```
+
+#### RES = 1.3
+UMAP/tSNE plots using 1.3 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 1.3, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 1.3, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+colData(sce)$Seurat_res_1.3 <- data@active.ident@.Data
+```
+
+#### RES = 1.4
+UMAP/tSNE plots using 1.4 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 1.4, eval = TRUE, echo= FALSE, fig.width = 18, fig.height = 7, warning = FALSE}
+data <- FindClusters(object = data, resolution = 1.4, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+colData(sce)$Seurat_res_1.4 <- data@active.ident@.Data
+```
+
+#### RES = 1.5
+UMAP/tSNE plots using 1.5 as the clustering resolution.
+<br><br>
+```{r Seurat resolution as 1.5, eval=TRUE, echo=FALSE, fig.height=7, fig.width=18, warning=FALSE}
+data <- FindClusters(object = data, resolution = 1.5, verbose = FALSE)
+data <- RunUMAP(data, reduction = "pca", dims = 1:significant_PC, verbose = FALSE)
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+CombinePlots(plots = list(DimPlot(data, reduction = "tsne", label = TRUE), DimPlot(data, reduction = "umap", label = TRUE)))
+
+colData(sce)$Seurat_res_1.5 <- data@active.ident@.Data
+```
+
+### Selected Resolution
+
+> Among different options of resolution above, a final resolution of **`r seurat.selected.resolution`** was chosen for downstream clustering to better reflect the data.
+
+```{r Seurat Clustering, echo = TRUE, warning = FALSE}
+seurat.selected.resolution=1.5
+data <- FindClusters(object = data, resolution = seurat.selected.resolution, verbose = FALSE)
+numClusters <- length(levels(Idents(object = data)))
+```
+
+<br><br>
+
+### tSNE Plot {.tabset .tabset-fade}
+tSNE (Non-linear Dimensional Reduction) is a dimension reduction technique that places cells with similar local neighborhoods in high-dimensional space together in low-dimensional space. tSNE has been the default method for such task in the past years. Using default parameters, a final resolution of **`r seurat.selected.resolution`** and **`r significant_PC`** PCs was chosen to better reflect the data, visualized in the following tSNE.
+
+```{r Seurat tsne1, eval = TRUE, echo= TRUE}
+data <- RunTSNE(object = data, dims.use = 1:significant_PC, do.fast = TRUE, check_duplicates = FALSE)
+
+```
+
+#### Clusters
+Seurat clusters cells and assigned a cluster label to each cell. The following plot is the tSNE representation of the clustering results, colored by the cluster labels.
+```{r Seurat tsne2, eval = TRUE, echo = TRUE, fig.height = 9, fig.width = 9}
+tSNE_coloredby_cluster <- DimPlot(data, reduction = "tsne", label = TRUE)
+tSNE_coloredby_cluster
+```
+```{r}
+
+```
+
+```{r}
+DimPlot(data, reduction = "umap", label = TRUE)
+```
+
+```{r}
+DimPlot(data, reduction = "umap", label = TRUE, group.by ="type")
+```
+```{r}
+DimPlot(object = data, split.by = 'type')
+```
+
+
+```{r Seurat Differential Expression, echo = TRUE}
+data.markers <- FindAllMarkers(object = data, min.pct = 0.25, thresh.use = 0.25, verbose = FALSE)
+```
+
+### Featureplot of Top Markers by Cluster {.tabset .tabset-fade .tabset-dropdown}
+Extract the top 10 gene markers for each of the clusters  and overlaid  on the UMAP projection in different tabs.  <br>
+
+```{r}
+# Scatter plot across single cells
+#FeatureScatter(object = data, feature1 = "OLIG1", feature2 = "PC_1")
+
+VlnPlot(object = data, features = c("OLIG1", "OLIG2"))
+#RidgePlot(object = data, feature = c("OLIG1", "OLIG2"))
+VlnPlot(object = data, features = "OLIG1", split.by = "type")
+```
+
+
+
+
+
+```{r Seurat Top Markers by cluster, echo = TRUE, results = "asis", fig.height =9, fig.width = 9}
+template <- "#### %s {.tabset .tabset-fade}
+"
+template_inside <- "##### %s {-}
+"
+space <- " 
+
+"
+top9 <- data.frame(data.markers %>% group_by(cluster) %>% top_n(9, avg_log2FC))
+for (currentCluster in 0:(numClusters-1)) {
+  cat(sprintf(template, paste0("Cluster ", currentCluster)))
+  for (inside_count in 1:10){
+    current_feature <- top9$gene[(10*currentCluster+inside_count)]
+    cat(sprintf(template_inside, paste0(current_feature)))
+    print(FeaturePlot(object = data, features = current_feature, cols = c("grey", "blue")))
+    cat(space)
+    }
+  cat(space)
+}
+```
+
+
+```{r Seurat Top Markers by cluster Table, echo = FALSE, results='asis'}
+# Top genes table
+
+top5 <- data.frame(data.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC))
+top10 <- data.frame(data.markers %>% group_by(cluster) %>% top_n(10, avg_log2FC))
+top_all <- data.frame(data.markers %>% group_by(cluster))
+
+write.csv(top_all, file ="topgenes.csv", row.names = FALSE)
+
+colNames<-colnames(top10)
+top10Matrix <- as.matrix(top10)[,c(7,6,2,1,5,3,4)]
+colnames(top10Matrix) <- c(colNames[7], colNames[6], colNames[2], colNames[1], colNames[5], colNames[3], colNames[4])
+kable(top10Matrix, style = 'html', row.names = F) %>%
+  kable_styling(bootstrap_options = "striped") %>%
+  scroll_box(width = "100%", height = "500px")
+```
+
+
+```{r Seurat Custom markers backstage, include = FALSE, eval = TRUE}
+
+markerGenes <- c()
+for (marker in Custom_Markers){
+    if (TRUE %in% grepl(marker, data.markers$gene, ignore.case = TRUE)){
+        added_marker <- grep(marker, data.markers$gene, ignore.case = TRUE, value = TRUE)
+        markerGenes <- append(markerGenes, added_marker)
+    }
+}
+markerGenes <- unique(markerGenes)
+numMarkerGenes <- length(markerGenes)
+if (numMarkerGenes == 0){
+  custom_eval = FALSE
+} else {
+  custom_eval = TRUE
+}
+numMarkerGenes
+```
+
+
+```{r Seurat Custom markers, echo=TRUE, results = "asis", fig.height = 10, fig.width = 10, eval = custom_eval, echo = custom_eval}
+
+template <- "### %s {.tabset .tabset-fade}
+"
+template_inside <- "#### %s {-}
+"
+space <- " 
+
+"
+for (currentMarker in 1:numMarkerGenes) {
+  cat(sprintf(template, paste0(markerGenes[currentMarker])))
+  cat(sprintf(template_inside, paste0("All sample")))
+  print(FeaturePlot(object = data, features = markerGenes[currentMarker], pt.size = 3, cols = c("grey", "red")))
+  cat(space)
+  cat(sprintf(template_inside, paste0("Split by sample")))
+  print(FeaturePlot(object = data, features = markerGenes[currentMarker], cols = c("grey", "red"), pt.size = 3, split.by = "type", ncol = 2) + coord_fixed(ratio= sample_coord_ratio))
+  cat(space)
+  cat(space)
+}
+cat(space)
+cat(space)
+```
+
+```{r}
+senMayoTemp<-c("ACVR1B","ANG","ANGPT1","ANGPTL4","AREG","AXL","BEX3","BMP2","BMP6","C3","CCL1","CCL13","CCL16","CCL2","CCL20","CCL24","CCL26","CCL3","CCL3L1","CCL4","CCL5","CCL7","CCL8","CD55","CD9","CSF1","CSF2","CSF2RB","CST4","CTNNB1","CTSB","CXCL1","CXCL10","CXCL12","CXCL16","CXCL2","CXCL3","CXCL8","CXCR2","DKK-1.00","EDN1","EGF","EGFR","EREG","ESM1","ETS2","FAS","FGF1","FGF2","FGF7","GDF15","GEM","GMFG","HGF","HMGB1","ICAM1","ICAM3","IGF1","IGFBP1","IGFBP2","IGFBP3","IGFBP4","IGFBP5","IGFBP6","IGFBP7","IL10","IL13","IL15","IL18","IL1A","IL1B","IL2","IL32","IL6","IL6ST","IL7","INHA","IQGAP2","ITGA2","ITPKA","JUN","KITLG","LCP1","MIF","MMP1","MMP10","MMP12","MMP13","MMP14","MMP2","MMP3","MMP9","NAP1L4","NRG1","PAPPA","PECAM1","PGF","PIGF","PLAT","PLAU","PLAUR","PTBP1","PTGER2","PTGES","RPS6KA5","SCAMP4","SELPLG","SEMA3F","SERPINB4","SERPINE1","SERPINE2","SPP1","SPX","TIMP2","TNF","TNFRSF10C","TNFRSF11B","TNFRSF1A","TNFRSF1B","TUBGCP2","VEGFA","VEGFC","VGF","WNT16","WNT2")
+senMayoGenes<-c()
+
+
+for (marker in senMayoTemp){
+    if (TRUE %in% grepl(marker, data.markers$gene, ignore.case = TRUE)){
+        added_marker <- grep(marker, data.markers$gene, ignore.case = TRUE, value = TRUE)
+        senMayoGenes <- append(senMayoGenes, added_marker)
+    }
+}
+numsenMayoGenes<-length(senMayoGenes)
+```
+
+
+```{r}
+
+template <- "### %s {.tabset .tabset-fade}
+"
+template_inside <- "#### %s {-}
+"
+space <- " 
+
+"
+for (currentMarker in 1:numsenMayoGenes) {
+  cat(sprintf(template, paste0(senMayoGenes[currentMarker])))
+  cat(sprintf(template_inside, paste0("All samples")))
+  print(FeaturePlot(object = data, features = senMayoGenes[currentMarker], pt.size = 3, cols = c("grey", "red")))
+  cat(space)
+  cat(sprintf(template_inside, paste0("Case vs Control")))
+  print(FeaturePlot(object = data, features = senMayoGenes[currentMarker], cols = c("grey", "red"), pt.size = 3, split.by = "type", ncol = 2) + coord_fixed(ratio= sample_coord_ratio))
+  cat(space)
+  cat(space)
+}
+cat(space)
+cat(space)
+```
+
+
+
+```{r}
+canonical2<-c("SOX2", "EOMES", "TNC", "DCX", "CUX2", "SATB2", "BCL11B", "RORB", "GAD2", "OLIG1", "GFAP","ALDH1L1") 
+
+numcanoncial2<-length(canonical2)
+for (currentMarker in 1:numcanoncial2) {
+  cat(sprintf(template, paste0(canonical2[currentMarker])))
+  cat(sprintf(template_inside, paste0("All sample")))
+  print(FeaturePlot(object = data_loaded, features = canonical2[currentMarker], cols = c("grey", "red")))
+  cat(space)
+  cat(sprintf(template_inside, paste0("Split by sample")))
+  print(FeaturePlot(object = data_loaded, features = canonical2[currentMarker], cols = c("grey", "red"), split.by = "type", ncol = 2) + coord_fixed(ratio= sample_coord_ratio))
+  cat(space)
+  cat(space)
+}
+cat(space)
+cat(space)
+```
+```{r}
+for (currentMarker in 1:numcanoncial2){
+print(FeaturePlot(object = data_loaded, features = canonical2[currentMarker], cols = c("grey", "red")))
+}
+```
+
+```{r}
+for (currentMarker in 1:numcanoncial2){
+print(VlnPlot(object = data_loaded, features = canonical2[currentMarker]))
+}
+```
+
+
+
+
+```{r}
+#Cluster List 
+OPC<-c("OLIG1","OLIG2")
+Olig<-c("MAL","PLP1")
+#check if MAL of MBP
+
+# 6 -> olig1
+# 12 -> olig1 
+FeaturePlot(object = data_loaded, features = c(OPC,Olig), cols = c("grey", "red"))
+VlnPlot(object = data_loaded, features =OPC)
+VlnPlot(object = data_loaded, features =Olig)
+```
+
+```{r}
+OPC<-c("PDGFRA", "CSPG4", "MAG", "CNP", "A2B5")
+general<-c("OLIG1", "OLIG2", "SOX10", "NKX2-2","CD9")
+premyelinating<-c("PLP1", "SOX17", "NKX6-2","SMARCA4","BRG1")
+myelinating<-c("CD82","TFR","MAL","ENPP4", "ASPA","BMP4","TMEM10")
+all_olig<-c("PDGFRA", "CSPG4", "MAG", "CNP", "A2B5","OLIG1", "OLIG2", "SOX10", "NKX2-2","CD9","PLP1", "SOX17", "NKX6-2","SMARCA4","BRG1","CD82","TFR","MAL","ENPP4", "ASPA","BMP4","TMEM10")
+VlnPlot(data_loaded, features =OPC )
+VlnPlot(data_loaded, features =premyelinating )
+```
+```{r}
+VlnPlot(data_loaded, features =myelinating )
+```
+
+
+```{r}
+saveRDS(data, file ="data_object.rds", ascii = FALSE, version = NULL,
+        compress = TRUE, refhook = NULL)
+```
+
+
+```{r}
+astro<-c("GFAP", "S100B", "ALDH1L1", "EAAT2", "GLT1")
+VlnPlot(data_loaded, features =astro )
+DotPlot(data_loaded, features = astro) + RotatedAxis()
+
+#S100B is also expressed in OPC cells committed to Oligo lineage 
+```
+
+```{r}
+data_loaded<-readRDS("/projectnb/zeldich/organoid_project/seurat_analysis/data_object.rds")
+```
+
+```{r}
+VlnPlot(data_loaded, features =canonical2temp,ncol = 1 )
+```
+
+```{r}
+DotPlot(data_loaded, features = canonical2) + RotatedAxis()
+```
+```{r}
+DotPlot(data_loaded, features = all_olig) + RotatedAxis()
+
+```
+```{r}
+Cell_type<-c("Astrocytes")
+all_markers<-read.delim("/projectnb/zeldich/organoid_project/seurat_analysis/radial_glia_markers.tsv",sep="\t")
+
+#Astrocytes<-all_markers[all_markers$"cell type"=="Astrocytes"]
+Astrocytes<-all_markers$official.gene.symbol[all_markers$cell.type == 'Astrocytes']
+#print(Astrocytes)
+head(all_markers)
+
+head(Astrocytes)
+
+```
+```{r}
+DotPlot(data_loaded, features = Astrocytes) + RotatedAxis()
+```
+```{r}
+#Radial<-all_markers$official.gene.symbol[all_markers$cell.type == 'Radial glial cells']
+Radial<-c("PAX6","SLC1A3","PDGFD","GLI3","NOTCH3","VCAM1")
+head(Radial)
+DotPlot(data_loaded, features = Radial) + RotatedAxis()
+```
+
+```{r}
+microglial<-all_markers$official.gene.symbol[all_markers$cell.type == 'Microglia']
+
+head(microglial)
+DotPlot(data_loaded, features = microglial) + RotatedAxis()
+```
+
+```{r}
+Excitory<-c("NEUROD6","SLC17A7", "SLC17A6")
+Inhib<-c("GAD2")
+DotPlot(data_loaded, features = Excitory) + RotatedAxis()
+DotPlot(data_loaded, features = Inhib) + RotatedAxis()
+VlnPlot(data_loaded, features = c("SLC17A7","SLC17A6"))
+VlnPlot(data_loaded, features = Inhib)
+```
+```{r}
+IPC<-c("EOMES", "PPP1R17")
+DotPlot(data_loaded, features = IPC) + RotatedAxis()
+VlnPlot(data_loaded, features = "EOMES", split.by ="type")
+```
+```{r}
+for (i in canonical2){
+  a<-VlnPlot(data_loaded, features = i, split.by="type")
+  print(a)
+}
+
+```
+
+```{r}
+rg<-c("SOX2", "PAX6", "NESTIN","HOPX")
+basal<-c("HOPX")
+DotPlot(data_loaded, features = rg) + RotatedAxis()
+VlnPlot(data_loaded, features = basal)
+```
+```{r}
+calcium<-read.delim("/projectnb/zeldich/organoid_project/seurat_analysis/marker_csvs/calcium.csv") 
+head(calcium)
+calcium_list<-c("CACNG1")
+for (i in calcium){
+  calcium_list<-append(calcium_list, calcium$CACNG1)
+}
+
+for (gene in calcium_list){
+  print(VlnPlot(data_loaded,features=gene,split.by ="type" ))
+}
+```
+
+```{r}
+potassium<-read.delim("/projectnb/zeldich/organoid_project/seurat_analysis/marker_csvs/potassium.csv") 
+head(potassium)
+potassium_list<-c("KCNMA1")
+for (i in potassium){
+  potassium_list<-append(potassium_list, potassium$KCNMA1)
+}
+
+for (gene in potassium_list){
+  print(VlnPlot(data_loaded,features=gene,split.by ="type" ))
+}
+```
+```{r}
+
+```
+```{r}
+
+```
+

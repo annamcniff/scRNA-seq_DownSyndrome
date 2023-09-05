@@ -1,0 +1,796 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+suffix <- "Seurat"
+cachePath <- paste0("./cache/", suffix, "/")
+plotsPath <- paste0("./plots/", suffix, "/")
+SCEPath <- paste0("./cache/SCE_object/")
+dir.create(file.path(cachePath), showWarnings = FALSE)
+dir.create(file.path(plotsPath), showWarnings = FALSE)
+
+currentDir <- dirname(getwd())
+investigator <- basename(dirname(currentDir))
+projectDate <- basename(currentDir)
+projectID <- projectName <- paste(projectDate, investigator, sep = "_")
+
+# Knitr Global Options
+knitr::opts_chunk$set(
+    cache=FALSE,
+    cache.lazy=FALSE,        # don't do lazy-loading for big objects
+    cache.comments=FALSE,
+    cache.path = cachePath,
+    fig.path = plotsPath,
+    fig.align = "center",
+    fig.keep = "all",
+    dev = c("png", "pdf")
+)
+
+library(Seurat)
+library(dplyr)
+library(cowplot)
+library(RColorBrewer)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(SingleCellExperiment)
+library(scater)
+library(gridExtra)
+library(grid)
+
+```
+
+
+```{r}
+
+data<-readRDS("/projectnb/zeldich/organoid_project/seurat_analysis/data_object.rds")
+data <- data[!grepl("MALAT1", rownames(data)), ]
+
+# Filter Mitocondrial
+data <- data[!grepl("^MT-", rownames(data)), ]
+
+data.markers <- FindAllMarkers(data, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 5, order_by = avg_log2FC)
+```
+```{r}
+grouped<-data.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 5, order_by = avg_log2FC)
+```
+
+
+```{r}
+data.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 1, wt = avg_log2FC) -> top10
+DoHeatmap(data, features = top10$gene) + NoLegend()
+```
+```{r}
+
+```
+
+
+```{r}
+cell_markers<-grouped
+Y<-split(cell_markers, cell_markers$cluster)
+cluster0 <- Y[[1]]
+cluster0g<-cluster0$gene
+cluster1 <- Y[[2]]
+cluster1g<-cluster1$gene
+cluster2 <- Y[[3]]
+cluster2g<-cluster2$gene
+cluster3 <- Y[[4]]
+cluster3g<-cluster3$gene
+cluster4 <- Y[[5]]
+cluster4g<-cluster4$gene
+cluster5 <- Y[[6]]
+cluster5g<-cluster5$gene
+cluster6<- Y[[7]]
+cluster6g<-cluster6$gene
+cluster7 <- Y[[8]]
+cluster7g<-cluster7$gene
+cluster8 <- Y[[9]]
+cluster8g<-cluster8$gene
+cluster9 <- Y[[10]]
+cluster9g<-cluster9$gene
+cluster10 <- Y[[11]]
+cluster10g<-cluster10$gene
+cluster11 <- Y[[12]]
+cluster11g<-cluster11$gene
+cluster12 <- Y[[13]]
+cluster12g<-cluster12$gene
+
+```
+
+```{r}
+cluster10g
+```
+
+
+```{r}
+write.csv(cell_markers, "/projectnb/zeldich/organoid_project/seurat_analysis/markers.csv", row.names=FALSE)
+
+#
+write.csv(cluster0g, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster0g.csv", row.names=FALSE)
+write.csv(cluster1, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster1.csv", row.names=FALSE)
+write.csv(cluster2, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster2.csv", row.names=FALSE)
+write.csv(cluster3, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster3.csv", row.names=FALSE)
+write.csv(cluster4, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster4.csv", row.names=FALSE)
+write.csv(cluster5, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster5.csv", row.names=FALSE)
+write.csv(cluster6, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster6.csv", row.names=FALSE)
+write.csv(cluster7, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster7.csv", row.names=FALSE)
+write.csv(cluster8, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster8.csv", row.names=FALSE)
+write.csv(cluster9, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster9.csv", row.names=FALSE)
+write.csv(cluster10, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster10.csv", row.names=FALSE)
+write.csv(cluster11, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster11.csv", row.names=FALSE)
+write.csv(cluster12, "/projectnb/zeldich/organoid_project/seurat_analysis/cluster12.csv", row.names=FALSE)
+
+```
+
+```{r}
+new_idents<-c("ExN1","ExN2","ExN3","ExN4","ExN5","ExN6","Ast","bRGC","RG","IPC","InN","ExN","OPC")
+names(new_idents) <- levels(data)
+
+data <- RenameIdents(object = data, new_idents)
+DimPlot(data, label = TRUE)
+
+```
+```{r}
+brgc<-c("HOPX","SLC1A3")
+rgc<-c("HES1", "NEUROD4","FABP7")
+
+RGCs<-c("HES1", "ID4", "CYR61", "FOS","TUBA1B")
+IPCs<-c("EOMES", "NEUROD1", "ELAVL2", "ELAVL4")
+
+FeaturePlot(object = data, features = brgc, cols = c("grey", "red"))
+FeaturePlot(object = data, features = rgc, cols = c("grey", "red"))
+DotPlot(object = data, features = RGCs)
+DotPlot(object = data, features = IPCs)
+DotPlot(object = data, features = brgc)
+DotPlot(object = data, features = rgc)
+```
+
+```{r}
+argc<-c("AFDN","APKC","PLEKHA7")
+DotPlot(object = data, features = argc)
+```
+
+
+```{r}
+calcium<-read.delim("/projectnb/zeldich/organoid_project/seurat_analysis/marker_csvs/calcium.csv") 
+head(calcium)
+calcium_list<-c("CACNG1")
+for (i in calcium){
+  calcium_list<-append(calcium_list, calcium$CACNG1)
+}
+
+for (gene in calcium_list){
+  print(VlnPlot(data_loaded,features=gene,split.by ="type" ))
+}
+
+```
+
+```{r}
+DotPlot(data_loaded, features = calcium, split.by = "type",cols = c("red", "blue"),) + RotatedAxis()
+```
+```{r}
+
+#new_idents<-c("ExN1","ExN2","ExN3","ExN4","ExN5","ExN6","Ast","RG1","RG2","IPC","InN","ExN7","OPC")
+#names(new_idents) <- levels(data)
+
+data <- RenameIdents(object = data, new_idents)
+exns<-subset(x = data, idents = c("ExN1", "ExN2","ExN3","ExN4","ExN5","ExN6""))
+exn_sen<-c("CALM1","FTH1", "SCG5", "PCP4", "TTC3" ,"APP" )
+for (i in exn_sen){
+print(VlnPlot(exns, features = i, split.by = "type"))
+}
+```
+```{r}
+inns<-subset(x = data, idents = c("InN"))
+inn_sen<-c("FTH1","SCG5","HSPA8","RPS7")
+for (i in inn_sen){
+print(VlnPlot(inns, features = i, split.by = "type"))
+}
+```
+
+```{r}
+opc<-subset(x = data, idents = c("OPC"))
+
+DotPlot(opc, features="OLIG2", split.by = "type")
+DotPlot(opc, features="TP53", split.by = "type")
+
+head(opc)
+opc.markers <- FindMarkers(opc, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(opc.markers, n = 15)
+```
+```{r}
+#opc.markers <- cbind(gene = rownames(opc.markers), opc.markers)
+#rownames(opc.markers) <- 1:nrow(opc.markers)
+
+opc.genes<-opc.markers$gene
+
+
+write.csv(opc.genes, file ="opc_genes_go.csv", row.names = FALSE)
+# in command line 
+# sed -i 's/"//g' opc_genes_go.csv
+```
+
+
+
+```{r}
+ast<-subset(x = data, idents = c("Ast"))
+astg<-c("IFNAR2")
+DotPlot(ast, features=astg, split.by = "type")
+ast.markers <- FindMarkers(ast, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(ast.markers, n = 15)
+```
+```{r}
+
+```
+
+
+
+```{r}
+exn1<-subset(x = data, idents = c("ExN1"))
+
+exn1.markers <- FindMarkers(exn1, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(exn1.markers, n = 15)
+```
+```{r}
+exn2<-subset(x = data, idents = c("ExN2"))
+
+exn2.markers <- FindMarkers(exn2, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(exn2.markers, n = 15)
+```
+
+```{r}
+exn3<-subset(x = data, idents = c("ExN3"))
+
+exn3.markers <- FindMarkers(exn3, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(exn3.markers, n = 15)
+```
+```{r}
+exn4<-subset(x = data, idents = c("ExN4"))
+
+exn4.markers <- FindMarkers(exn4, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(exn4.markers, n = 15)
+```
+```{r}
+exn5<-subset(x = data, idents = c("ExN5"))
+
+exn5.markers <- FindMarkers(exn5, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(exn5.markers, n = 15)
+```
+```{r}
+exn6<-subset(x = data, idents = c("ExN6"))
+
+exn6.markers <- FindMarkers(exn6, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(exn6.markers, n = 15)
+```
+```{r}
+inn<-subset(x = data, idents = c("InN"))
+
+inn.markers <- FindMarkers(inn, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(inn.markers, n = 15)
+```
+```{r}
+ipc<-subset(x = data, idents = c("IPC"))
+
+ipc.markers <- FindMarkers(ipc, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(ipc.markers, n = 15)
+```
+```{r}
+all_exn<-subset(x = data, idents = c("ExN1","ExN2","ExN3","ExN4","ExN5","ExN6"))
+
+allexn.markers <- FindMarkers(all_exn, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(allexn.markers, n = 15)
+```
+
+
+```{r}
+calc<-c("CACNG1","CACNG2",
+"CACNG3",
+"CACNG4",
+"CACNG5",
+"CACNG6",
+"CACNG7",
+"CACNG8",
+"CACNA1A",
+"CACNA1B",
+"CACNA1C",
+"CACNA1D",
+"CACNA1E",
+"CACNA1F",
+"CACNA1G",
+"CACNA1H",
+"CACNA1I",
+"CACNA1S",
+"CACNA2D1",
+"CACNA2D2",
+"CACNA2D3",
+"CACNA2D4",
+"CACNB1",
+"CACNB2",
+"CACNB3",
+"CACNB4")
+ampa<-c("GRIA1","GRIA2","GRIA3","GRIA4")
+
+SenMayo<-read.delim("/projectnb/zeldich/organoid_project/seurat_analysis/marker_csvs/SenMayo.csv") 
+head(SenMayo)
+
+```
+
+```{r}
+#Iterating through all ExN markers looking for markers in SenMayo gene set
+Sen_exn<-c()
+allexn.markers<- cbind("Gene" = rownames(allexn.markers), allexn.markers)
+rownames(allexn.markers) <- 1:nrow(allexn.markers)
+for(i in SenMayo$ACVR1B){
+  if (any(allexn.markers=="ACVR1B")==TRUE){
+    Sen_exn<-c("ACVR1B")
+  }
+  if(any(allexn.markers==i)==TRUE){
+  Sen_exn<-c(Sen_exn, i)
+  }
+}
+Sen_exn
+```
+
+```{r}
+VlnPlot(all_exn, features =c("IGFBP2","JUN","PAPPA"), group.by="type")
+
+```
+
+
+```{r}
+#Find all markers differentially expressed between Triploid and Euploid
+compare.markers <- FindMarkers(data, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+head(compare.markers, n = 15)
+
+#make gene names a column instead of index
+compare.markers <- cbind(gene = rownames(compare.markers), compare.markers)
+rownames(compare.markers) <- 1:nrow(compare.markers)
+
+```
+
+```{r}
+#write out csv of DE genes for GO analysis
+compare.genes<-compare.markers$genes
+compare.genes
+write.csv(compare.genes, file ="all_genes_go.csv", row.names = FALSE)
+# in command line 
+# sed -i 's/"//g' all_genes_go.csv
+# this will remove quotation marks from file, necessary for DAVID to identify genes by geneid 
+```
+
+
+
+```{r}
+#create dataframe of markers grouped by cluster
+grouped<-compare.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 100, order_by = avg_log2FC)
+```
+
+
+```{r}
+#Read in all david results
+david_all <- read.table("/projectnb/zeldich/organoid_project/DAVID/all_david.txt",
+  sep="\t", header=TRUE)
+head(david_all)
+```
+
+
+```{r}
+top_50<-compare.markers[1:50,]
+```
+
+```{r}
+library(fgsea)
+
+ranks <- data.markers$avg_log2FC
+names(ranks) <- data.markers$gene
+head(ranks)
+if ( any( duplicated(names(ranks)) )  ) {
+    warning("Duplicates in gene names")
+    ranks = ranks[!duplicated(names(ranks))]
+  }
+```
+
+```{r}
+barplot(sort(ranks, decreasing = T))
+```
+
+
+```{r}
+pathways.hallmark <- gmtPathways("/projectnb/zeldich/organoid_project/seurat_analysis/h.all.v2023.1.Hs.symbols.gmt.txt")
+
+pathways.hallmark %>% 
+  head() %>% 
+  lapply(head)
+```
+```{r}
+fgseaRes <- fgsea(pathways=pathways.hallmark, stats=ranks,scoreType = "pos")
+length(fgseaRes)
+```
+
+
+```{r}
+head(fgseaRes)
+
+```
+
+```{r}
+fgseaResTidy <- fgseaRes %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+ggplot(fgseaResTidy, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Hallmark pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+```{r}
+#replace with name of pathway of interest
+plotEnrichment(pathways.hallmark[["HALLMARK_ESTROGEN_RESPONSE_EARLY"]], ranks)
+```
+
+
+```{r}
+pathways.c2 <- gmtPathways("/projectnb/zeldich/organoid_project/seurat_analysis/c2.all.v2023.1.Hs.symbols.gmt.txt")
+
+pathways.c2 %>% 
+  head() %>% 
+  lapply(head)
+
+fgseaRes2 <- fgsea(pathways=pathways.c2, stats=ranks)
+length(fgseaRes2)
+```
+```{r}
+fgseaRes2<-subset(fgseaRes2, padj < .005)
+fgseaResTidy2 <- fgseaRes2 %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+ggplot(fgseaResTidy2, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="C2 pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+```{r}
+pathways.go <- gmtPathways("/projectnb/zeldich/organoid_project/seurat_analysis/c5.go.v2023.1.Hs.symbols.gmt.txt")
+
+pathways.go %>% 
+  head() %>% 
+  lapply(head)
+
+fgseaResgo <- fgsea(pathways=pathways.go, stats=ranks)
+length(fgseaResgo)
+```
+```{r}
+fgseaResgopval<-subset(fgseaResgo, padj < .005)
+fgseaResTidygo <- fgseaResgo %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+ggplot(fgseaResTidygo, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="C2 pathways NES from GSEA") + 
+  theme_minimal()
+```
+```{r}
+sen_list<-c("GOBP_CELLULAR_SENESCENCE","GOBP_NEGATIVE_REGULATION_OF_CELLULA
+R_SENESCENCE","GOBP_POSITIVE_REGULATION_OF_CELLULA
+R_SENESCENCE","GOBP_REGULATION_OF_CELLULAR_SENESCE
+NCE","GOBP_REPLICATIVE_SENESCENCE")
+fgseaResgosen<-subset(fgseaResgo, pathway%in%sen_list)
+
+ggplot(fgseaResgosen, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title="Senescence pathways NES from GSEA") + 
+  theme_minimal()
+```
+
+```{r}
+
+out_metadata <- data@meta.data
+umapCoord <- as.data.frame(Embeddings(object = data[["umap"]]))
+write.csv(out_metadata, "/projectnb/zeldich/organoid_project/seurat_analysis/metadata.csv", row.names=FALSE)
+write.csv(umapCoord, "/projectnb/zeldich/organoid_project/seurat_analysis/umapCoord.csv", row.names=FALSE)
+```
+
+
+```{r}
+#install.packages("EnrichIntersect")
+library(EnrichIntersect)
+
+x <- fgseaRes$NES
+custom.set <- 
+set.seed(123)
+enrich <- enrichment(x, custom.set, permute.n = 5)
+```
+```{r}
+res_p0.05 <- compare.markers(res) %>% mutate(threshold = p_val_adj < 0.05)
+
+# Create the volcano plot
+ggplot(res_p0.05) + 
+        geom_point(aes(x = log2FoldChange, y = -log10(p_val_adj), color = threshold)) + 
+        xlab("log2 fold change") + 
+        ylab("-log10 adjusted p-value") + 
+        theme(legend.position = "none", 
+              plot.title = element_text(size = rel(1.5), hjust = 0.5), 
+              axis.title = element_text(size = rel(1.25)))
+```
+```{r}
+ggplot(data=compare.markers, aes(x=avg_log2FC, y=p_val_adj)) + geom_point()
+```
+```{r}
+p<-ggplot(data=compare.markers, aes(x=avg_log2FC, y=-log10(p_val_adj))) + geom_point()+ theme_minimal()
+p2 <- p + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+p2
+```
+```{r}
+compare.markers$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+compare.markers$diffexpressed[compare.markers$avg_log2FC > 0.6 & compare.markers$p_val_adj < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+compare.markers$diffexpressed[compare.markers$avg_log2FC < -0.6 & compare.markers$p_val_adj < 0.05] <- "DOWN"
+```
+
+```{r}
+p<-ggplot(data=compare.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed)) + geom_point()+ theme_minimal()
+p2 <- p + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+p2
+```
+
+```{r}
+p3 <- p2 + scale_color_manual(values=c("blue", "black", "red"))
+
+# 2. to automate a bit: ceate a named vector: the values are the colors to be used, the names are the categories they will be assigned to:
+mycolors <- c("blue", "red", "black")
+names(mycolors) <- c("DOWN", "UP", "NO")
+p3 <- p2 + scale_colour_manual(values = mycolors)
+```
+
+```{r}
+compare.markers$delabel <- NA
+compare.markers$delabel[compare.markers$diffexpressed != "NO"] <- compare.markers$gene[compare.markers$diffexpressed != "NO"]
+
+ggplot(data=compare.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed, label=delabel)) + 
+    geom_point() + 
+    theme_minimal() +
+    geom_text()
+```
+
+```{r}
+library(ggrepel)
+png(file="overallFC.png",
+width=500, height=500)
+
+ggplot(data=compare.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_classic()+
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+dev.off()
+```
+
+```{r}
+all_exn<-subset(x = data, idents = c("ExN1","ExN2","ExN3","ExN4","ExN5","ExN6"))
+
+allexn.markers <- FindMarkers(all_exn, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+
+allexn.markers <- cbind(gene = rownames(allexn.markers), allexn.markers)
+rownames(allexn.markers) <- 1:nrow(allexn.markers)
+
+allexn.markers$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+allexn.markers$diffexpressed[allexn.markers$avg_log2FC > 0.6 & allexn.markers$p_val_adj < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+allexn.markers$diffexpressed[allexn.markers$avg_log2FC < -0.6 & allexn.markers$p_val_adj < 0.05] <- "DOWN"
+```
+```{r}
+p<-ggplot(data=allexn.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed)) + geom_point()+ theme_minimal()
+p2 <- p + geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+p2
+```
+```{r}
+p3 <- p2 + scale_color_manual(values=c("blue", "black", "red"))
+
+# 2. to automate a bit: ceate a named vector: the values are the colors to be used, the names are the categories they will be assigned to:
+mycolors <- c("blue", "red", "black")
+names(mycolors) <- c("DOWN", "UP", "NO")
+
+p3 <- p2 + scale_colour_manual(values = mycolors)
+allexn.markers$delabel <- NA
+allexn.markers$delabel[allexn.markers$diffexpressed != "NO"] <-allexn.markers$gene[allexn.markers$diffexpressed != "NO"]
+
+ggplot(data=allexn.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed, label=delabel)) + 
+    geom_point() + 
+    theme_minimal() +
+    geom_text()
+```
+```{r}
+png(file="allexnFC.png",
+width=500, height=500)
+
+ggplot(data=allexn.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_classic()+
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+dev.off()
+```
+
+```{r}
+ast<-subset(x = data, idents = c("Ast"))
+ast.markers <- FindMarkers(ast, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+ast.markers <- cbind(gene = rownames(ast.markers), ast.markers)
+rownames(ast.markers) <- 1:nrow(ast.markers)
+
+ast.markers$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+ast.markers$diffexpressed[ast.markers$avg_log2FC > 0.6 & allexn.markers$p_val_adj < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+ast.markers$diffexpressed[ast.markers$avg_log2FC < -0.6 & ast.markers$p_val_adj < 0.05] <- "DOWN"
+
+ast.markers$delabel <- NA
+ast.markers$delabel[ast.markers$diffexpressed != "NO"] <-ast.markers$gene[ast.markers$diffexpressed != "NO"]
+
+png(file="astFC.png",
+width=500, height=500)
+
+ggplot(data=ast.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_classic()+
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+dev.off()
+
+```
+
+```{r}
+opc<-subset(x = data, idents = c("OPC"))
+opc.markers <- FindMarkers(opc, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+opc.markers <- cbind(gene = rownames(opc.markers), opc.markers)
+rownames(opc.markers) <- 1:nrow(opc.markers)
+
+opc.markers$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+opc.markers$diffexpressed[opc.markers$avg_log2FC > 0.6 & opc.markers$p_val_adj < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+opc.markers$diffexpressed[opc.markers$avg_log2FC < -0.6 & opc.markers$p_val_adj < 0.05] <- "DOWN"
+
+opc.markers$delabel <- NA
+opc.markers$delabel[opc.markers$diffexpressed != "NO"] <-opc.markers$gene[opc.markers$diffexpressed != "NO"]
+
+png(file="opcFC.png",
+width=500, height=500)
+
+ggplot(data=opc.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_classic()+
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+dev.off()
+
+```
+
+```{r}
+inn<-subset(x = data, idents = c("InN"))
+inn.markers <- FindMarkers(inn, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+inn.markers <- cbind(gene = rownames(inn.markers), inn.markers)
+rownames(inn.markers) <- 1:nrow(inn.markers)
+
+inn.markers$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+inn.markers$diffexpressed[inn.markers$avg_log2FC > 0.6 & inn.markers$p_val_adj < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+inn.markers$diffexpressed[inn.markers$avg_log2FC < -0.6 & inn.markers$p_val_adj < 0.05] <- "DOWN"
+
+inn.markers$delabel <- NA
+inn.markers$delabel[inn.markers$diffexpressed != "NO"] <-inn.markers$gene[inn.markers$diffexpressed != "NO"]
+
+png(file="innFC.png",
+width=500, height=500)
+
+ggplot(data=inn.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_classic()+
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+dev.off()
+
+```
+```{r}
+bRGC<-subset(x = data, idents = c("bRGC"))
+brgc.markers <- FindMarkers(bRGC, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+brgc.markers <- cbind(gene = rownames(brgc.markers), brgc.markers)
+rownames(brgc.markers) <- 1:nrow(brgc.markers)
+
+brgc.markers$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+brgc.markers$diffexpressed[brgc.markers$avg_log2FC > 0.6 & brgc.markers$p_val_adj < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+brgc.markers$diffexpressed[brgc.markers$avg_log2FC < -0.6 & brgc.markers$p_val_adj < 0.05] <- "DOWN"
+
+brgc.markers$delabel <- NA
+brgc.markers$delabel[brgc.markers$diffexpressed != "NO"] <-brgc.markers$gene[brgc.markers$diffexpressed != "NO"]
+
+png(file="brgcFC.png",
+width=500, height=500)
+
+ggplot(data=brgc.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_classic()+
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+dev.off()
+
+```
+
+```{r}
+RGC<-subset(x = data, idents = c("RG"))
+rgc.markers <- FindMarkers(RGC, group.by="type", ident.1 ="Triploid", ident.2 = "Euploid", verbose = FALSE)
+rgc.markers <- cbind(gene = rownames(rgc.markers), rgc.markers)
+rownames(rgc.markers) <- 1:nrow(rgc.markers)
+
+rgc.markers$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+rgc.markers$diffexpressed[rgc.markers$avg_log2FC > 0.6 & rgc.markers$p_val_adj < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+rgc.markers$diffexpressed[rgc.markers$avg_log2FC < -0.6 & rgc.markers$p_val_adj < 0.05] <- "DOWN"
+
+rgc.markers$delabel <- NA
+rgc.markers$delabel[rgc.markers$diffexpressed != "NO"] <-rgc.markers$gene[rgc.markers$diffexpressed != "NO"]
+
+png(file="rgcFC.png",
+width=500, height=500)
+
+ggplot(data=rgc.markers, aes(x=avg_log2FC, y=-log10(p_val_adj), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_classic()+
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+dev.off()
+
+```
+
+```{r}
+
+sen_all<-subset(brgc.markers, gene %in% SenMayo$ACVR1B)
+
+sen_all
+```
+
