@@ -1,5 +1,7 @@
-# BMSIP_organoid_project
-Work for BMSIP summer internship at the Zeldich lab. 
+
+# scRNA-seq_DownSyndrome
+## BMSIP Organoid Project
+Work for BMSIP summer internship at the Zeldich lab. ScRNA-seq analysis of ipsc stem cell derived cortical organoids. 
 
 ## Plots.zip
 Compressed directory containing the following subdirectories: 
